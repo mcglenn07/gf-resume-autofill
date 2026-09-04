@@ -1,0 +1,11 @@
+{
+    "name": "glenn/gf-resume-autofill",
+    "description": "Autofill Gravity Forms fields from an uploaded resume via AI parsing.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4",
+        "smalot/pdfparser": "^2.9",
+        "phpoffice/phpword": "^1.2"
+    }
+}
