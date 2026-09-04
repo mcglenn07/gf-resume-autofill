@@ -14,6 +14,8 @@ class GFRA_AddOn extends GFAddOn {
 	protected $_title                       = 'Resume Autofill for Gravity Forms';
 	protected $_short_title                 = 'Resume Autofill';
 
+	const MASKED_KEY = '********************'; // plain ASCII — no multibyte escaping ambiguity in either quote style
+
 	private static $_instance = null;
 
 	public static function get_instance() {
@@ -134,7 +136,7 @@ class GFRA_AddOn extends GFAddOn {
 		if ( 'openai_api_key' === ( $field['name'] ?? '' ) ) {
 			$stored = $this->get_plugin_setting( 'openai_api_key' );
 			if ( ! empty( $stored ) ) {
-				$field['value'] = str_repeat( '\xe2\x80\xa2', 20 );
+				$field['value'] = self::MASKED_KEY;
 			}
 		}
 		$html = parent::settings_text( $field, false );
@@ -148,7 +150,7 @@ class GFRA_AddOn extends GFAddOn {
 		$incoming = $settings['openai_api_key'] ?? '';
 		$existing = $this->get_plugin_setting( 'openai_api_key' );
 
-		if ( '' === $incoming || false !== strpos( $incoming, str_repeat( '\xe2\x80\xa2', 4 ) ) ) {
+		if ( '' === $incoming || self::MASKED_KEY === $incoming ) {
 			$settings['openai_api_key'] = $existing; // unchanged from the masked placeholder
 		} else {
 			$settings['openai_api_key'] = GFRA_Encryption::encrypt( $incoming );
@@ -158,7 +160,7 @@ class GFRA_AddOn extends GFAddOn {
 	}
 
 	public function verify_openai_key( $value ) {
-		if ( false !== strpos( (string) $value, str_repeat( '\xe2\x80\xa2', 4 ) ) ) {
+		if ( self::MASKED_KEY === $value ) {
 			return true; // unchanged from a previously-verified stored value
 		}
 		if ( empty( $value ) ) {
