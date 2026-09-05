@@ -202,7 +202,7 @@ class GFRA_AddOn extends GFAddOn {
 						'name'       => 'resume_autofill_field_id',
 						'label'      => esc_html__( 'Resume Upload Field', 'gf-resume-autofill' ),
 						'type'       => 'field_select',
-						'args'       => array( 'field_type' => array( 'fileupload' ) ),
+						'args'       => array( 'field_types' => array( 'fileupload' ) ),
 						'dependency' => array( 'field' => 'resume_autofill_enable', 'values' => array( '1' ) ),
 						'tooltip'    => esc_html__( 'Which File Upload field on this form accepts the resume.', 'gf-resume-autofill' ),
 					),
