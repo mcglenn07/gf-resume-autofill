@@ -1,11 +1,10 @@
 ( function( $ ) {
 	'use strict';
 
-	$( document ).on( 'change', '.gfra-resume-field input[type="file"]', function() {
-		var $input     = $( this );
-		var $fieldWrap = $input.closest( '.gfield' );
-		var $consent   = $fieldWrap.find( '.gfra-consent-checkbox' );
-		var file       = this.files && this.files[ 0 ];
+	function maybeUpload( $fieldWrap ) {
+		var $input   = $fieldWrap.find( 'input[type="file"]' );
+		var $consent = $fieldWrap.find( '.gfra-consent-checkbox' );
+		var file     = $input[ 0 ] && $input[ 0 ].files && $input[ 0 ].files[ 0 ];
 
 		if ( ! file || ! $consent.length || ! $consent.is( ':checked' ) ) {
 			return;
@@ -58,6 +57,10 @@
 				'Could not process this file — please fill the form manually.';
 			$status.text( message );
 		} );
+	}
+
+	$( document ).on( 'change', '.gfra-resume-field input[type="file"], .gfra-resume-field .gfra-consent-checkbox', function() {
+		maybeUpload( $( this ).closest( '.gfield' ) );
 	} );
 
 } )( jQuery );

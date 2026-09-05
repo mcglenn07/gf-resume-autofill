@@ -127,28 +127,32 @@ class GFRA_AddOn extends GFAddOn {
 	}
 
 	/**
-	 * Masks the stored key on redisplay so the settings screen never shows the
-	 * raw ciphertext, and treats a resubmit of the mask as "unchanged."
-	 * This save/redisplay pairing hasn't been exercised against a live GF
-	 * install yet — worth testing before relying on it.
+	 * GF's modern Settings renderer (class-settings.php, used since GF 2.5)
+	 * builds the settings form's `initial_values` straight from
+	 * get_plugin_settings() and renders it directly into the input's `value`
+	 * attribute — it never calls the legacy per-field-type settings_text()
+	 * override. So masking has to happen here, at the value source, not via
+	 * settings_text() (which is dead code against this renderer and has been
+	 * removed). get_plugin_setting()/get_plugin_settings() now always return
+	 * the masked placeholder for openai_api_key; get_raw_plugin_setting()
+	 * bypasses that for the two callers that need the real ciphertext.
 	 */
-	public function settings_text( $field, $echo = true ) {
-		if ( 'openai_api_key' === ( $field['name'] ?? '' ) ) {
-			$stored = $this->get_plugin_setting( 'openai_api_key' );
-			if ( ! empty( $stored ) ) {
-				$field['value'] = self::MASKED_KEY;
-			}
+	public function get_plugin_settings() {
+		$settings = parent::get_plugin_settings();
+		if ( is_array( $settings ) && ! empty( $settings['openai_api_key'] ) ) {
+			$settings['openai_api_key'] = self::MASKED_KEY;
 		}
-		$html = parent::settings_text( $field, false );
-		if ( $echo ) {
-			echo $html; // phpcs:ignore WordPress.Security.EscapeOutput -- parent already escapes field markup
-		}
-		return $html;
+		return $settings;
+	}
+
+	private function get_raw_plugin_setting( $name ) {
+		$settings = parent::get_plugin_settings();
+		return is_array( $settings ) && isset( $settings[ $name ] ) ? $settings[ $name ] : null;
 	}
 
 	public function update_plugin_settings( $settings ) {
 		$incoming = $settings['openai_api_key'] ?? '';
-		$existing = $this->get_plugin_setting( 'openai_api_key' );
+		$existing = $this->get_raw_plugin_setting( 'openai_api_key' );
 
 		if ( '' === $incoming || self::MASKED_KEY === $incoming ) {
 			$settings['openai_api_key'] = $existing; // unchanged from the masked placeholder
@@ -174,7 +178,7 @@ class GFRA_AddOn extends GFAddOn {
 	}
 
 	public function get_decrypted_api_key() {
-		return GFRA_Encryption::decrypt( $this->get_plugin_setting( 'openai_api_key' ) );
+		return GFRA_Encryption::decrypt( $this->get_raw_plugin_setting( 'openai_api_key' ) );
 	}
 
 	// -----------------------------------------------------------------
@@ -226,36 +230,58 @@ class GFRA_AddOn extends GFAddOn {
 						'label'      => esc_html__( 'Field Mapping', 'gf-resume-autofill' ),
 						'type'       => 'field_map',
 						'dependency' => array( 'field' => 'resume_autofill_enable', 'values' => array( '1' ) ),
-						'field_map'  => array(
-							array( 'name' => 'personal.first_name',             'label' => esc_html__( 'First Name', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.last_name',              'label' => esc_html__( 'Last Name', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.email',                  'label' => esc_html__( 'Email', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.phone',                  'label' => esc_html__( 'Phone', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.address.street',         'label' => esc_html__( 'Street Address', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.address.city',           'label' => esc_html__( 'City', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.address.state',          'label' => esc_html__( 'State', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.address.zip',            'label' => esc_html__( 'ZIP', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.address.country',        'label' => esc_html__( 'Country', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.linkedin_url',           'label' => esc_html__( 'LinkedIn URL', 'gf-resume-autofill' ) ),
-							array( 'name' => 'personal.portfolio_url',          'label' => esc_html__( 'Portfolio URL', 'gf-resume-autofill' ) ),
-							array( 'name' => 'summary',                         'label' => esc_html__( 'Summary', 'gf-resume-autofill' ) ),
-							array( 'name' => 'most_recent_position.job_title',  'label' => esc_html__( 'Current Job Title', 'gf-resume-autofill' ) ),
-							array( 'name' => 'most_recent_position.employer',   'label' => esc_html__( 'Current Employer', 'gf-resume-autofill' ) ),
-							array( 'name' => 'most_recent_position.start_date', 'label' => esc_html__( 'Current Position Start Date', 'gf-resume-autofill' ) ),
-							array( 'name' => 'work_experience',  'label' => esc_html__( 'Work Experience', 'gf-resume-autofill' ), 'field_type' => array( 'text' ) ),
-							array( 'name' => 'education',        'label' => esc_html__( 'Education', 'gf-resume-autofill' ),        'field_type' => array( 'text' ) ),
-							array( 'name' => 'skills',           'label' => esc_html__( 'Skills', 'gf-resume-autofill' ),           'field_type' => array( 'text' ) ),
-							array( 'name' => 'certifications',   'label' => esc_html__( 'Certifications', 'gf-resume-autofill' ),   'field_type' => array( 'text' ) ),
-						),
+						'field_map'  => self::field_map_choices(),
 					),
 				),
 			),
 		);
 	}
 
+	private static function field_map_choices() {
+		return array(
+			array( 'name' => 'personal.first_name',             'label' => esc_html__( 'First Name', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.last_name',              'label' => esc_html__( 'Last Name', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.email',                  'label' => esc_html__( 'Email', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.phone',                  'label' => esc_html__( 'Phone', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.address.street',         'label' => esc_html__( 'Street Address', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.address.city',           'label' => esc_html__( 'City', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.address.state',          'label' => esc_html__( 'State', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.address.zip',            'label' => esc_html__( 'ZIP', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.address.country',        'label' => esc_html__( 'Country', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.linkedin_url',           'label' => esc_html__( 'LinkedIn URL', 'gf-resume-autofill' ) ),
+			array( 'name' => 'personal.portfolio_url',          'label' => esc_html__( 'Portfolio URL', 'gf-resume-autofill' ) ),
+			array( 'name' => 'summary',                         'label' => esc_html__( 'Summary', 'gf-resume-autofill' ) ),
+			array( 'name' => 'most_recent_position.job_title',  'label' => esc_html__( 'Current Job Title', 'gf-resume-autofill' ) ),
+			array( 'name' => 'most_recent_position.employer',   'label' => esc_html__( 'Current Employer', 'gf-resume-autofill' ) ),
+			array( 'name' => 'most_recent_position.start_date', 'label' => esc_html__( 'Current Position Start Date', 'gf-resume-autofill' ) ),
+			array( 'name' => 'work_experience',  'label' => esc_html__( 'Work Experience', 'gf-resume-autofill' ), 'field_type' => array( 'text' ) ),
+			array( 'name' => 'education',        'label' => esc_html__( 'Education', 'gf-resume-autofill' ),        'field_type' => array( 'text' ) ),
+			array( 'name' => 'skills',           'label' => esc_html__( 'Skills', 'gf-resume-autofill' ),           'field_type' => array( 'text' ) ),
+			array( 'name' => 'certifications',   'label' => esc_html__( 'Certifications', 'gf-resume-autofill' ),   'field_type' => array( 'text' ) ),
+		);
+	}
+
 	// -----------------------------------------------------------------
 	// Shared helpers
 	// -----------------------------------------------------------------
+
+	/**
+	 * GF's Field_Map setting only ever persists per-choice keys
+	 * (`resume_autofill_field_map_<dot.path>` => field ID) via its real save
+	 * flow — it never writes a single combined `resume_autofill_field_map`
+	 * array to form meta. Reassemble it the same way GF_Field_Map::get_value()
+	 * does when rendering the settings screen.
+	 */
+	public function get_field_map( $form_id ) {
+		$map = array();
+		foreach ( self::field_map_choices() as $choice ) {
+			$field_id = $this->get_form_setting( $form_id, 'resume_autofill_field_map_' . $choice['name'] );
+			if ( ! empty( $field_id ) ) {
+				$map[ $choice['name'] ] = $field_id;
+			}
+		}
+		return $map;
+	}
 
 	public function is_autofill_enabled( $form_id ) {
 		return (bool) $this->get_form_setting( $form_id, 'resume_autofill_enable' );
@@ -286,8 +312,13 @@ class GFRA_AddOn extends GFAddOn {
 				continue;
 			}
 
-			$disclosure  = $this->get_disclosure_text( $form_id );
 			$checkbox_id = 'gfra-consent-' . $form_id . '-' . $field_id;
+
+			if ( false !== strpos( $field->description ?? '', $checkbox_id ) ) {
+				continue; // already injected by an earlier gform_pre_render pass this request
+			}
+
+			$disclosure = $this->get_disclosure_text( $form_id );
 
 			$notice = sprintf(
 				'<div class="gfra-disclosure"><p>%s</p><label><input type="checkbox" class="gfra-consent-checkbox" id="%s" /> %s</label></div>',

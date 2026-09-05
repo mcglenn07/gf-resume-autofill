@@ -70,8 +70,8 @@ class GFRA_REST_Controller {
 			return $parsed;
 		}
 
-		$field_map = $addon->get_form_setting( $form_id, 'resume_autofill_field_map', array() );
-		$values    = GFRA_Field_Mapper::format_for_mapping( $parsed, (array) $field_map );
+		$field_map = $addon->get_field_map( $form_id );
+		$values    = GFRA_Field_Mapper::format_for_mapping( $parsed, $field_map );
 		$overwrite = 'overwrite' === $addon->get_form_setting( $form_id, 'resume_autofill_overwrite', 'keep' );
 
 		return rest_ensure_response( array(
